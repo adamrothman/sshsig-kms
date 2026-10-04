@@ -262,6 +262,23 @@ first tag, v0.1.0, waits for Adam's go-ahead.
   The SDK's HTTP client honours `HTTPS_PROXY`, which a sandbox's proxy
   relies on.
 
+## Implementation notes
+
+Found while designing, for whoever builds it:
+
+- **Tests must isolate git from the developer's own configuration.** A
+  global `gpg.ssh.program`, such as 1Password's signer, takes precedence
+  in ways a test repository's local config doesn't undo: in one trial it
+  received the test's throwaway key and refused it. Every test that runs
+  git sets `GIT_CONFIG_GLOBAL` to a file of its own and
+  `GIT_CONFIG_NOSYSTEM=1`, so tests behave the same on a laptop as in CI.
+- **Converting KMS's public key.** `GetPublicKey` returns a DER
+  SubjectPublicKeyInfo. `x509.ParsePKIXPublicKey`, then
+  `ssh.NewPublicKey`, then `ssh.MarshalAuthorizedKey` turn it into the
+  SSH public key line, for Ed25519 and P-256 alike (checked offline).
+  Don't rely on `ssh-keygen -i -m PKCS8` instead: OpenSSH 10.3 on macOS
+  can't import an Ed25519 key in that form.
+
 ## Alternatives considered
 
 - **An `ssh-agent` backed by KMS**, so `ssh-keygen` itself signs. Needs a
