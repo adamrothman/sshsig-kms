@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVersion(t *testing.T) {
@@ -89,5 +91,50 @@ func TestRunDispatchesSign(t *testing.T) {
 	err := run([]string{"-Y", "sign", "-n", "git", "payload"}, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "missing -f <keyfile>") {
 		t.Errorf("got error %v", err)
+	}
+}
+
+func TestRunPublicKey(t *testing.T) {
+	isolateGit(t)
+	for _, keyType := range []string{"ed25519", "ecdsa"} {
+		t.Run(keyType, func(t *testing.T) {
+			key := newSSHKey(t, keyType)
+			var out bytes.Buffer
+			if err := runPublicKey(key, connectLocal, time.Minute, &out); err != nil {
+				t.Fatal(err)
+			}
+			pub, err := os.ReadFile(key + ".pub") // "<type> <base64> test\n"
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := strings.Join(strings.Fields(string(pub))[:2], " ") + "\n"; out.String() != want {
+				t.Errorf("printed %q, want %q", out.String(), want)
+			}
+		})
+	}
+}
+
+func TestRunPublicKeyUsesProfile(t *testing.T) {
+	isolateGit(t)
+	runGit(t, ".", "config", "--global", "sshsig-kms.profile", "signing")
+	var profile string
+	connect := func(ctx context.Context, keyID, p string) (kmsAPI, error) {
+		profile = p
+		return connectLocal(ctx, keyID, p)
+	}
+	if err := runPublicKey(newSSHKey(t, "ed25519"), connect, time.Minute, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if profile != "signing" {
+		t.Errorf("connected with profile %q, want %q", profile, "signing")
+	}
+}
+
+func TestRunPublicKeyArguments(t *testing.T) {
+	for _, args := range [][]string{{"public-key"}, {"public-key", "a", "b"}} {
+		err := run(args, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "public-key takes one argument") {
+			t.Errorf("run(%q): got error %v", args, err)
+		}
 	}
 }

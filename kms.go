@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/asn1"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 // kmsAPI is the part of the KMS client sshsig-kms uses.
 type kmsAPI interface {
 	Sign(context.Context, *kms.SignInput, ...func(*kms.Options)) (*kms.SignOutput, error)
+	GetPublicKey(context.Context, *kms.GetPublicKeyInput, ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error)
 }
 
 // connectFunc returns a KMS client for the key keyID, with credentials from
@@ -110,4 +112,40 @@ func decodeECDSA(der []byte) ([]byte, error) {
 		return nil, errors.New("r and s must be positive")
 	}
 	return ssh.Marshal(rs), nil
+}
+
+// supportedSpecs lists the KMS key specs sshsig-kms signs with.
+func supportedSpecs() []string {
+	var specs []string
+	for _, kt := range keyTypes {
+		specs = append(specs, string(kt.spec))
+	}
+	slices.Sort(specs)
+	return specs
+}
+
+// kmsPublicKey returns the public half of the KMS key keyID as an SSH
+// public key. The key must be for signing, with a supported key spec.
+func kmsPublicKey(ctx context.Context, client kmsAPI, keyID string) (ssh.PublicKey, error) {
+	out, err := client.GetPublicKey(ctx, &kms.GetPublicKeyInput{KeyId: aws.String(keyID)})
+	if err != nil {
+		return nil, err
+	}
+	if out.KeyUsage != types.KeyUsageTypeSignVerify {
+		return nil, fmt.Errorf("KMS key %s has key usage %s, not %s", keyID, out.KeyUsage, types.KeyUsageTypeSignVerify)
+	}
+	if !slices.Contains(supportedSpecs(), string(out.KeySpec)) {
+		return nil, fmt.Errorf("KMS key %s has key spec %s, which is not supported (%s)",
+			keyID, out.KeySpec, strings.Join(supportedSpecs(), ", "))
+	}
+	// KMS returns a DER SubjectPublicKeyInfo.
+	key, err := x509.ParsePKIXPublicKey(out.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("KMS key %s: %v", keyID, err)
+	}
+	pub, err := ssh.NewPublicKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("KMS key %s: %v", keyID, err)
+	}
+	return pub, nil
 }

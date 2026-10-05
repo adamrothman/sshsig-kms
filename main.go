@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // version is the version sshsig-kms was built as, which the release build
@@ -38,6 +41,11 @@ func run(args []string, stdout io.Writer) error {
 		}
 		_, err := fmt.Fprintln(stdout, buildVersion())
 		return err
+	case len(args) > 0 && args[0] == "public-key":
+		if len(args) != 2 {
+			return errors.New("public-key takes one argument: the KMS key's ARN")
+		}
+		return runPublicKey(args[1], newKMS, timeLimit, stdout)
 	case isSign(args):
 		return runSign(args, newKMS, timeLimit)
 	default:
@@ -61,4 +69,27 @@ func buildVersion() string {
 // which git shows the user. AWS's errors can run over several lines.
 func errorLine(err error) string {
 	return "sshsig-kms: " + strings.Join(strings.Fields(err.Error()), " ")
+}
+
+// runPublicKey prints the public half of the KMS key keyID as an SSH public
+// key line, connecting with the AWS profile in sshsig-kms.profile if it's
+// set. It gives up after timeout.
+func runPublicKey(keyID string, connect connectFunc, timeout time.Duration, stdout io.Writer) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	profile, err := gitConfig("sshsig-kms.profile")
+	if err != nil {
+		return err
+	}
+	client, err := connect(ctx, keyID, profile)
+	if err != nil {
+		return err
+	}
+	pub, err := kmsPublicKey(ctx, client, keyID)
+	if err != nil {
+		return err
+	}
+	_, err = stdout.Write(ssh.MarshalAuthorizedKey(pub))
+	return err
 }

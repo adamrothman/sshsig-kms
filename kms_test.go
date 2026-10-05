@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -157,5 +158,61 @@ func TestKMSSignUnsupportedKeyType(t *testing.T) {
 	want := "key type ssh-rsa is not supported (ecdsa-sha2-nistp256, ssh-ed25519)"
 	if err == nil || err.Error() != want {
 		t.Errorf("got error %v, want %q", err, want)
+	}
+}
+
+// publicKeyStub answers GetPublicKey with a fixed answer.
+type publicKeyStub struct {
+	kmsAPI
+	out *kms.GetPublicKeyOutput
+}
+
+func (s publicKeyStub) GetPublicKey(context.Context, *kms.GetPublicKeyInput, ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
+	return s.out, nil
+}
+
+func TestKMSPublicKey(t *testing.T) {
+	for _, keyType := range []string{"ed25519", "ecdsa"} {
+		t.Run(keyType, func(t *testing.T) {
+			client, want := testKMS(t, newSSHKey(t, keyType))
+			got, err := kmsPublicKey(context.Background(), client, "test-key")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got.Marshal(), want.Marshal()) {
+				t.Errorf("got %s, want %s", ssh.MarshalAuthorizedKey(got), ssh.MarshalAuthorizedKey(want))
+			}
+		})
+	}
+}
+
+func TestKMSPublicKeyRefuses(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		out  *kms.GetPublicKeyOutput
+		want string
+	}{
+		{
+			"encryption key",
+			&kms.GetPublicKeyOutput{KeySpec: types.KeySpecRsa2048, KeyUsage: types.KeyUsageTypeEncryptDecrypt},
+			"KMS key test-key has key usage ENCRYPT_DECRYPT, not SIGN_VERIFY",
+		},
+		{
+			"RSA signing key",
+			&kms.GetPublicKeyOutput{KeySpec: types.KeySpecRsa2048, KeyUsage: types.KeyUsageTypeSignVerify},
+			"KMS key test-key has key spec RSA_2048, which is not supported (ECC_NIST_EDWARDS25519, ECC_NIST_P256)",
+		},
+		{
+			"malformed public key",
+			&kms.GetPublicKeyOutput{KeySpec: types.KeySpecEccNistP256, KeyUsage: types.KeyUsageTypeSignVerify, PublicKey: []byte("not DER")},
+			"KMS key test-key: ",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := kmsPublicKey(context.Background(), publicKeyStub{out: tt.out}, "test-key")
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("got error %v, want one containing %q", err, tt.want)
+			}
+		})
 	}
 }

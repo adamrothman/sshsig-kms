@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"fmt"
 	"os"
 
@@ -74,4 +75,18 @@ func (l localKMS) Sign(_ context.Context, in *kms.SignInput, _ ...func(*kms.Opti
 		return nil, err
 	}
 	return &kms.SignOutput{KeyId: in.KeyId, Signature: sig, SigningAlgorithm: in.SigningAlgorithm}, nil
+}
+
+func (l localKMS) GetPublicKey(_ context.Context, in *kms.GetPublicKeyInput, _ ...func(*kms.Options)) (*kms.GetPublicKeyOutput, error) {
+	der, err := x509.MarshalPKIXPublicKey(l.key.Public())
+	if err != nil {
+		return nil, err
+	}
+	return &kms.GetPublicKeyOutput{
+		KeyId:             in.KeyId,
+		KeySpec:           l.keyType.spec,
+		KeyUsage:          types.KeyUsageTypeSignVerify,
+		PublicKey:         der,
+		SigningAlgorithms: []types.SigningAlgorithmSpec{l.keyType.algorithm},
+	}, nil
 }
