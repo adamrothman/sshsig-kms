@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -98,4 +99,44 @@ func runGit(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return out
+}
+
+// sourceDir is the package's source directory: the working directory go
+// test starts in, before any test moves elsewhere.
+var sourceDir, _ = os.Getwd()
+
+var testBin struct {
+	once sync.Once
+	dir  string
+	err  error
+}
+
+// testBinary builds sshsig-kms with the fakekms tag, once per test run, and
+// returns the binary's path.
+func testBinary(t *testing.T) string {
+	t.Helper()
+	testBin.once.Do(func() {
+		testBin.dir, testBin.err = os.MkdirTemp("", "sshsig-kms-test")
+		if testBin.err != nil {
+			return
+		}
+		cmd := exec.Command("go", "build", "-tags", "fakekms", "-buildvcs=false",
+			"-o", filepath.Join(testBin.dir, "sshsig-kms"), ".")
+		cmd.Dir = sourceDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			testBin.err = fmt.Errorf("go build: %v\n%s", err, out)
+		}
+	})
+	if testBin.err != nil {
+		t.Fatal(testBin.err)
+	}
+	return filepath.Join(testBin.dir, "sshsig-kms")
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if testBin.dir != "" {
+		os.RemoveAll(testBin.dir)
+	}
+	os.Exit(code)
 }
