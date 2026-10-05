@@ -74,12 +74,45 @@ func sshKeygenVerify(t *testing.T, pub ssh.PublicKey, namespace string, message,
 // global config file's path.
 func isolateGit(t *testing.T) string {
 	t.Helper()
+	// git exports GIT_DIR and the like to hooks and to `git rebase -x`
+	// commands, and passes git -c settings on, so a test run can start with
+	// them set. Clear every one git lists as repository-local.
+	for _, name := range strings.Fields(runGit(t, ".", "rev-parse", "--local-env-vars")) {
+		t.Setenv(name, "") // restores the original value after the test
+		os.Unsetenv(name)
+	}
 	global := filepath.Join(t.TempDir(), "gitconfig")
 	writeFile(t, global, nil)
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Chdir(t.TempDir())
 	return global
+}
+
+// git exports GIT_DIR and the like to hooks and to `git rebase -x` commands,
+// and passes git -c settings on in GIT_CONFIG_PARAMETERS, so a test run can
+// start with them set. isolateGit must clear them, or tests would read the
+// developer's settings and commit into the developer's repository.
+func TestIsolateGitClearsRepositoryEnvironment(t *testing.T) {
+	developer := filepath.Join(t.TempDir(), ".git")
+	runGit(t, ".", "--git-dir", developer, "init", "-q") // --git-dir overrides any GIT_DIR this run started with
+	t.Setenv("GIT_DIR", developer)
+	t.Setenv("GIT_CONFIG_PARAMETERS", "'sshsig-kms.key'='developer-key'")
+
+	isolateGit(t)
+	runGit(t, ".", "init", "-q")
+	runGit(t, ".", "config", "sshsig-kms.key", "test-key")
+
+	if got, err := gitConfig("sshsig-kms.key"); err != nil || got != "test-key" {
+		t.Errorf("gitConfig = %q, %v; want %q", got, err, "test-key")
+	}
+	config, err := os.ReadFile(filepath.Join(developer, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(config, []byte("sshsig-kms")) {
+		t.Errorf("the test wrote to the developer's repository config:\n%s", config)
+	}
 }
 
 // tryGit runs git in dir and returns its combined output.
