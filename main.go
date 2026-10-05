@@ -11,11 +11,16 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"time"
 )
 
 // version is the version sshsig-kms was built as, which the release build
 // sets with -ldflags "-X main.version=0.1.0".
 var version string
+
+// timeLimit bounds each run's work, from loading credentials to writing its
+// output, so a broken network fails a commit promptly instead of hanging it.
+const timeLimit = 8 * time.Second
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -33,6 +38,8 @@ func run(args []string, stdout io.Writer) error {
 		}
 		_, err := fmt.Fprintln(stdout, buildVersion())
 		return err
+	case isSign(args):
+		return runSign(args, newKMS, timeLimit)
 	default:
 		return execSSHKeygen(args)
 	}

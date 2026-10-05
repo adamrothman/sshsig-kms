@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,5 +81,13 @@ func TestPassThroughRefusesItself(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(out), "sshsig-kms: ") || !strings.Contains(string(out), "is sshsig-kms itself") {
 		t.Errorf("output %q doesn't say that ssh-keygen is sshsig-kms", out)
+	}
+}
+
+func TestRunDispatchesSign(t *testing.T) {
+	// Without -f, the call fails while parsing, before it could reach AWS.
+	err := run([]string{"-Y", "sign", "-n", "git", "payload"}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "missing -f <keyfile>") {
+		t.Errorf("got error %v", err)
 	}
 }
