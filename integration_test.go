@@ -30,10 +30,14 @@ func TestKMS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The first call loads credentials and connects, as each signing does:
+	// git starts sshsig-kms afresh for every signature.
+	start := time.Now()
 	pub, err := kmsPublicKey(ctx, client, keyID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("public key, loading credentials and connecting: %v", time.Since(start))
 	t.Logf("public key: %s", ssh.MarshalAuthorizedKey(pub))
 
 	message := []byte("tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n\nintegration test\n")
@@ -49,9 +53,9 @@ func TestKMS(t *testing.T) {
 		}
 		latencies = append(latencies, time.Since(start))
 	}
-	t.Logf("first signature: %v (includes loading credentials and connecting)", latencies[0])
-	rest := slices.Sorted(slices.Values(latencies[1:]))
-	t.Logf("next %d: median %v, slowest %v", len(rest), rest[len(rest)/2], rest[len(rest)-1])
+	slices.Sort(latencies)
+	t.Logf("%d signatures, once connected: median %v, slowest %v",
+		len(latencies), latencies[len(latencies)/2], latencies[len(latencies)-1])
 
 	sshKeygenVerify(t, pub, "git", message, armor(pub, "git", sig))
 }

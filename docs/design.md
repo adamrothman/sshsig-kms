@@ -1,6 +1,6 @@
 # sshsig-kms design
 
-Status: built, 2026-10-04; not yet released. The open questions at the end wait on the first run against real KMS.
+Status: built, 2026-10-04; not yet released.
 
 `sshsig-kms` signs git commits and tags with an SSH key held in AWS KMS.
 git runs it as `gpg.ssh.program`, in place of `ssh-keygen`. The private
@@ -155,8 +155,8 @@ can use `credential_process = /bin/cat <file>`, with the file in the
 
 KMS has signed with Ed25519 since 2025-11-07. AWS documents the DER
 encoding of ECDSA signatures (ANSI X9.62, RFC 3279) but not the format of
-Ed25519 ones; the 64 raw bytes are an inference, which step 7 checks on
-every signature and the integration test confirms.
+Ed25519 ones. The 64 raw bytes were an inference, which the first run
+against real KMS confirmed (below); step 7 still checks every signature.
 
 The SSHSIG encoding is written here, about fifty lines on top of
 `golang.org/x/crypto/ssh`, rather than taken from a library: the format
@@ -304,9 +304,17 @@ Found while designing, for whoever builds it:
 - **An SSHSIG library** (`github.com/hiddeco/sshsig`). It would work; the
   encoding is small enough, and central enough, to own and test here.
 
-## Open questions
+## Answered by the first run against real KMS
 
-- The format of KMS's Ed25519 signatures, settled by the first
-  integration test run (step 7 of signing guards it meanwhile).
-- KMS's latency from where it runs, which the integration test measures;
-  the 8-second limit changes if the numbers call for it.
+On 2026-10-04, with an `ECC_NIST_EDWARDS25519` key in us-west-2, from a
+Mac, with credentials from an SSO profile:
+
+- **The format of KMS's Ed25519 signatures:** the 64 raw bytes. Every
+  signature passed step 7's check and `ssh-keygen -Y verify`, and git
+  verified real commits signed through it.
+- **KMS's latency:** once connected, `Sign` took a median of 31–35 ms
+  per run of ten, and 117 ms at the slowest, over 40 signatures. But git
+  starts `sshsig-kms` afresh for every signature, and loading credentials
+  and connecting took 550–725 ms; a whole `git commit -S` took
+  0.70–0.86 s. That leaves the 8-second limit a wide margin, so it
+  stays.
