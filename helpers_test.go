@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -64,4 +65,37 @@ func sshKeygenVerify(t *testing.T, pub ssh.PublicKey, namespace string, message,
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("ssh-keygen -Y verify: %v\n%s", err, out)
 	}
+}
+
+// isolateGit gives git an empty global config of its own and no system
+// config, so the developer's git config can't affect the test, and moves
+// the test to an empty directory outside any repository. It returns the
+// global config file's path.
+func isolateGit(t *testing.T) string {
+	t.Helper()
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	writeFile(t, global, nil)
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Chdir(t.TempDir())
+	return global
+}
+
+// tryGit runs git in dir and returns its combined output.
+func tryGit(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// runGit runs git in dir and returns its combined output, failing the test
+// if git fails.
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := tryGit(dir, args...)
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return out
 }
