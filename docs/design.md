@@ -1,6 +1,6 @@
 # sshsig-kms design
 
-Status: proposed, 2026-10-04. Not built yet.
+Status: built, 2026-10-04; not yet released. The open questions at the end wait on the first run against real KMS.
 
 `sshsig-kms` signs git commits and tags with an SSH key held in AWS KMS.
 git runs it as `gpg.ssh.program`, in place of `ssh-keygen`. The private
@@ -71,7 +71,10 @@ unchanged), so stdin, stdout and the exit status are `ssh-keygen`'s. That covers
 (`-Y find-principals`, `-Y check-novalidate` and `-Y verify`, with the
 payload on stdin), so `git verify-commit` and `git log --show-signature`
 work as usual. `ssh-keygen` is found on `PATH`; if that resolves to
-`sshsig-kms` itself, it fails instead of looping.
+`sshsig-kms` itself, it fails instead of looping. The one exception is a
+call with no arguments, which git never makes: instead of starting
+`ssh-keygen`'s interactive key generation, it fails with one line naming
+its own commands and pointing to the README.
 
 ### Commands of its own
 
@@ -184,9 +187,11 @@ mislead here.
 
 ### What it never does
 
-- Write anything but `<file>.sig`, or print anything to stdout when
-  signing.
-- Print, cache or store credentials.
+- Write anything of its own but `<file>.sig`, or print anything to stdout
+  when signing.
+- Print credentials, or cache or store them itself. With an SSO profile,
+  the AWS SDK refreshes an expired SSO token in its shared cache
+  (`~/.aws/sso/cache`), as the AWS CLI does.
 - Talk to anything but AWS: KMS, and whatever the credential chain uses
   (STS, SSO).
 - Write a signature it hasn't verified.
