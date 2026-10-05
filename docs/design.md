@@ -1,6 +1,6 @@
 # sshsig-kms design
 
-Status: proposed, 2026-10-04. Not built yet.
+Status: built, 2026-10-04; not yet released. The open questions at the end wait on the first run against real KMS.
 
 `sshsig-kms` signs git commits and tags with an SSH key held in AWS KMS.
 git runs it as `gpg.ssh.program`, in place of `ssh-keygen`. The private
