@@ -33,6 +33,7 @@ base=https://github.com/adamrothman/sshsig-kms/releases/download/v$version
 curl -fsSLO "$base/$file" -O "$base/SHA256SUMS"
 sha256sum --check --ignore-missing SHA256SUMS
 gh attestation verify "$file" --repo adamrothman/sshsig-kms
+mkdir -p ~/.local/bin
 install -m 0755 "$file" ~/.local/bin/sshsig-kms
 ```
 
@@ -61,7 +62,10 @@ your `PATH` too.
 2. Allow whoever signs to call `kms:Sign` on the key, and allow
    `kms:GetPublicKey` for the next step. See [IAM policy](#iam-policy).
 
-3. Save the public key:
+3. Save the public key. `public-key` gets credentials the way signing
+   does: from `sshsig-kms.profile` if it's set (step 5), and otherwise from
+   the AWS SDK's default chain, so prefix `AWS_PROFILE=<profile>` to use a
+   particular profile now:
 
    ```sh
    sshsig-kms public-key arn:aws:kms:us-west-2:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab \
