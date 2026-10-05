@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // newSSHKey generates an unencrypted key pair with ssh-keygen and returns
@@ -28,5 +32,36 @@ func writeFile(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testKMS returns a localKMS signing with the private key at keyPath, and
+// that key's public half.
+func testKMS(t *testing.T, keyPath string) (localKMS, ssh.PublicKey) {
+	t.Helper()
+	l, err := loadLocalKMS(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := ssh.NewPublicKey(l.key.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l, pub
+}
+
+// sshKeygenVerify checks with ssh-keygen -Y verify that sig, an armored
+// signature, is pub's signature of message in namespace.
+func sshKeygenVerify(t *testing.T, pub ssh.PublicKey, namespace string, message, sig []byte) {
+	t.Helper()
+	dir := t.TempDir()
+	allowed := filepath.Join(dir, "allowed_signers")
+	sigFile := filepath.Join(dir, "message.sig")
+	writeFile(t, allowed, fmt.Appendf(nil, "test namespaces=%q %s", namespace, ssh.MarshalAuthorizedKey(pub)))
+	writeFile(t, sigFile, sig)
+	cmd := exec.Command("ssh-keygen", "-Y", "verify", "-f", allowed, "-I", "test", "-n", namespace, "-s", sigFile)
+	cmd.Stdin = bytes.NewReader(message)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ssh-keygen -Y verify: %v\n%s", err, out)
 	}
 }
