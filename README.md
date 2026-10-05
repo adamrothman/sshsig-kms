@@ -163,7 +163,8 @@ To grant access by alias instead of by key ARN, see AWS's
 - Ed25519 and ECDSA P-256 keys only; no RSA.
 - Linux and macOS.
 - Only the signing git asks for (`-Y sign`). Every other call goes to
-  `ssh-keygen` unchanged.
+  `ssh-keygen` unchanged, except a bare `sshsig-kms`, which names its own
+  commands.
 - Each signature has 8 seconds, from loading credentials to writing it, so
   a broken network fails a commit promptly instead of hanging it.
 - `sshsig-kms` talks to nothing but AWS: KMS, and STS or SSO if your

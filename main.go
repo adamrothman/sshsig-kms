@@ -35,13 +35,17 @@ func main() {
 // run carries out the command in args, writing any output to stdout.
 func run(args []string, stdout io.Writer) error {
 	switch {
-	case len(args) > 0 && args[0] == "version":
+	case len(args) == 0:
+		// ssh-keygen with no arguments would start generating a key.
+		return errors.New("no command given: git runs sshsig-kms as gpg.ssh.program, " +
+			"and its own commands are public-key <arn> and version; see https://github.com/adamrothman/sshsig-kms")
+	case args[0] == "version":
 		if len(args) > 1 {
 			return errors.New("version takes no arguments")
 		}
 		_, err := fmt.Fprintln(stdout, buildVersion())
 		return err
-	case len(args) > 0 && args[0] == "public-key":
+	case args[0] == "public-key":
 		if len(args) != 2 {
 			return errors.New("public-key takes one argument: the KMS key's ARN")
 		}

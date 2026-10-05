@@ -71,7 +71,10 @@ unchanged), so stdin, stdout and the exit status are `ssh-keygen`'s. That covers
 (`-Y find-principals`, `-Y check-novalidate` and `-Y verify`, with the
 payload on stdin), so `git verify-commit` and `git log --show-signature`
 work as usual. `ssh-keygen` is found on `PATH`; if that resolves to
-`sshsig-kms` itself, it fails instead of looping.
+`sshsig-kms` itself, it fails instead of looping. The one exception is a
+call with no arguments, which git never makes: instead of starting
+`ssh-keygen`'s interactive key generation, it fails with one line naming
+its own commands and pointing to the README.
 
 ### Commands of its own
 

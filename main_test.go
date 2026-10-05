@@ -46,8 +46,9 @@ cat
 exit 3
 `
 
-func TestPassThrough(t *testing.T) {
-	bin := testBinary(t)
+// useFakeSSHKeygen puts fakeSSHKeygen first on PATH.
+func useFakeSSHKeygen(t *testing.T) {
+	t.Helper()
 	dir := t.TempDir()
 	script := filepath.Join(dir, "ssh-keygen")
 	writeFile(t, script, []byte(fakeSSHKeygen))
@@ -55,6 +56,11 @@ func TestPassThrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestPassThrough(t *testing.T) {
+	bin := testBinary(t)
+	useFakeSSHKeygen(t)
 
 	cmd := exec.Command(bin, "-Y", "verify", "-n", "git", "-s", "commit.sig")
 	cmd.Stdin = strings.NewReader("payload\n")
@@ -83,6 +89,31 @@ func TestPassThroughRefusesItself(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(out), "sshsig-kms: ") || !strings.Contains(string(out), "is sshsig-kms itself") {
 		t.Errorf("output %q doesn't say that ssh-keygen is sshsig-kms", out)
+	}
+}
+
+// ssh-keygen with no arguments starts generating a key, which is never what
+// someone trying sshsig-kms wants, so a bare call says what to run instead.
+func TestNoArguments(t *testing.T) {
+	bin := testBinary(t)
+	useFakeSSHKeygen(t)
+
+	out, err := exec.Command(bin).CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("got %v, want exit status 1\n%s", err, out)
+	}
+	line := string(out)
+	if !strings.HasPrefix(line, "sshsig-kms: ") || strings.Count(line, "\n") != 1 {
+		t.Errorf("output %q isn't one sshsig-kms line", line)
+	}
+	for _, want := range []string{"gpg.ssh.program", "public-key", "version", "https://github.com/adamrothman/sshsig-kms"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("output %q doesn't mention %s", line, want)
+		}
+	}
+	if strings.Contains(line, "usage:") {
+		t.Errorf("output %q says usage:", line)
 	}
 }
 
