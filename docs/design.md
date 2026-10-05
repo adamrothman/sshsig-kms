@@ -187,9 +187,11 @@ mislead here.
 
 ### What it never does
 
-- Write anything but `<file>.sig`, or print anything to stdout when
-  signing.
-- Print, cache or store credentials.
+- Write anything of its own but `<file>.sig`, or print anything to stdout
+  when signing.
+- Print credentials, or cache or store them itself. With an SSO profile,
+  the AWS SDK refreshes an expired SSO token in its shared cache
+  (`~/.aws/sso/cache`), as the AWS CLI does.
 - Talk to anything but AWS: KMS, and whatever the credential chain uses
   (STS, SSO).
 - Write a signature it hasn't verified.

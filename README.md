@@ -172,7 +172,9 @@ To grant access by alias instead of by key ARN, see AWS's
 - Each signature has 8 seconds, from loading credentials to writing it, so
   a broken network fails a commit promptly instead of hanging it.
 - `sshsig-kms` talks to nothing but AWS: KMS, and STS or SSO if your
-  credentials need them. It never prints, caches or stores credentials.
+  credentials need them. It never prints credentials, or caches or stores
+  them itself. With an SSO profile, the AWS SDK refreshes an expired SSO
+  token in its shared cache (`~/.aws/sso/cache`), as the AWS CLI does.
 
 ## Development
 
